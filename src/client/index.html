@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Cambro Data Test</title>
+    <style media="screen">
+      body {
+        font-family: monospace;
+      }
+
+      #data {
+        background: lime;
+        padding: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <p>This page will update with the latest data every frame. <br></p>
+    <div id="data">Error *Cambro must be running in a seperate window.</div>
+    <script src="/socket.io/socket.io.js"></script>
+  	<script src="data.js"></script>
+
+    <script type="text/javascript">
+      const dataDiv = document.getElementById('data')
+
+      function step () {
+        if (cambroData.length > 0) {
+          dataDiv.innerHTML = cambroData
+        }
+        requestAnimationFrame(step)
+      }
+
+      requestAnimationFrame(step)
+    </script>
+  </body>
+</html>

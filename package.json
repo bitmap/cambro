@@ -1,0 +1,23 @@
+{
+  "name": "cambro",
+  "version": "1.0.0",
+  "description": "webcam lightness sensor",
+  "main": "index.js",
+  "scripts": {
+    "start": "node ."
+  },
+  "author": "Cabe Branson",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.15.2",
+    "socket.io": "^1.7.3"
+  },
+  "devDependencies": {
+    "eslint": "^3.19.0",
+    "eslint-config-standard": "^10.2.1",
+    "eslint-plugin-import": "^2.2.0",
+    "eslint-plugin-node": "^4.2.2",
+    "eslint-plugin-promise": "^3.5.0",
+    "eslint-plugin-standard": "^3.0.1"
+  }
+}
