@@ -1,135 +1,163 @@
 /* globals io */
 
-var settings = {
-  gridX: 4,
-  gridY: 4,
-  threshold: 128,
-  camWidth: 640,
-  camHeight: 480,
-  showGuides: true
-}
-
-function init () {
-  let i = 0
-  let ix = 0
-  let iy = 0
-  let minPixels = 0
-  let counter = -1
-  let slice
-  let sliceData
-  let sliceStart
-  let sliceEnd
-  let lightness
-  let averageLightness
-  let cambroData = []
-  let cambroIO
-
-  const socket = io.connect()
-
-  const video = document.createElement('video')
-  video.setAttribute('autoplay', '1')
-  video.setAttribute('width', settings.camWidth)
-  video.setAttribute('height', settings.camHeight)
-  // video.setAttribute('style', 'display:none')
-
-  navigator.getUserMedia({video: true}, (stream) => {
-    video.src = window.URL.createObjectURL(stream)
-    update()
-  }, (err) => {
-    throw err
-  })
-
-  const total = (settings.gridX * settings.gridY)
-  const sliceWidth = settings.camWidth / settings.gridX
-  const sliceHeight = settings.camHeight / settings.gridY
-  const maxPixels = (sliceWidth * settings.camHeight) / settings.gridY
-
-  const canvas = document.createElement('canvas')
-  const banvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')
-  const btx = banvas.getContext('2d')
-
-  canvas.width = banvas.width = settings.camWidth
-  canvas.height = banvas.height = settings.camHeight
-
-  function normalize (data) {
-    data = Math.floor((averageLightness - minPixels) / (maxPixels - minPixels) * 100)
-
-    if (data >= 100) {
-      data = 100
+class Cambro {
+  constructor (x, y) {
+    this.settings = {
+      gridX: x,
+      gridY: y,
+      threshold: 128,
+      camWidth: 640,
+      camHeight: 480,
+      showGuides: true
     }
 
-    return data
+    this.ctx = null
+    this.btx = null
+
+    this.counter = -1
+    this.socket = io.connect()
+    this.data = []
   }
 
-  function draw (video) {
-    for (iy = 0; iy < settings.gridY; iy++) {
-      for (ix = 0; ix < settings.gridX; ix++) {
-        sliceStart = (sliceWidth * ix)
-        sliceEnd = (sliceHeight * iy)
+  get totalSlices () {
+    return this.settings.gridX * this.settings.gridY
+  }
 
-        // set variable to 0 each draw
-        lightness = 0
+  get slice () {
+    const width = this.settings.camWidth / this.settings.gridX
+    const height = this.settings.camHeight / this.settings.gridY
+
+    return {
+      width: width,
+      height: height
+    }
+  }
+
+  get maxPixels () {
+    return this.slice.width * this.settings.camHeight / this.settings.gridY
+  }
+
+  createCanvas () {
+    const video = document.createElement('video')
+    video.setAttribute('autoplay', '1')
+    video.setAttribute('width', this.settings.camWidth)
+    video.setAttribute('height', this.settings.camHeight)
+
+    const canvas = document.createElement('canvas')
+    const banvas = document.createElement('canvas')
+
+    canvas.width = banvas.width = this.settings.camWidth
+    canvas.height = banvas.height = this.settings.camHeight
+
+    this.ctx = canvas.getContext('2d')
+    this.btx = banvas.getContext('2d')
+
+    navigator.getUserMedia(
+      { video: true },
+      stream => {
+        video.src = window.URL.createObjectURL(stream)
+        document.body.appendChild(canvas)
+        this.draw(video, this.btx, this.ctx)
+      },
+      err => {
+        throw err
+      }
+    )
+  }
+
+  normalize (value) {
+    const average = value / 3
+    const normied = Math.floor(average / this.maxPixels * 100)
+    return normied
+  }
+
+  bro (source) {
+    for (let iy = 0; iy < this.settings.gridY; iy += 1) {
+      for (let ix = 0; ix < this.settings.gridX; ix += 1) {
+        // This is the current slice number
+        this.counter += 1
+
+        if (this.counter >= this.totalSlices) {
+          this.counter = 0
+        }
+
+        // Find position of this slice
+        const start = this.slice.width * ix
+        const end = this.slice.height * iy
+
+        // New data each draw
+
+        // Reset data
+        let lightness = 0
 
         // draw video on offscreen canvas for speed
-        btx.drawImage(video, 0, 0, settings.camWidth, settings.camHeight)
+        this.btx.drawImage(
+          source,
+          0,
+          0,
+          this.settings.camWidth,
+          this.settings.camHeight
+        )
 
         // get that data from offscreen canvas
-        slice = btx.getImageData(sliceStart, sliceEnd, sliceWidth, sliceHeight)
-        sliceData = slice.data
+        const sliceImage = this.btx.getImageData(
+          start,
+          end,
+          this.slice.width,
+          this.slice.height
+        )
 
-        // loop through the pixels (r , g, b) to get the value
+        const sliceData = sliceImage.data
+
+        // loop through the pixels (r, g, b) to get the value
         // if it's greater than the threshold add to lightness
-        for (i = 0; i < sliceData.length; i += 4) {
-          if (sliceData[i] >= settings.threshold) {
+        for (let i = 0; i < sliceData.length; i += 4) {
+          if (sliceData[i] >= this.settings.threshold) {
             lightness += 1
           }
-          if (sliceData[i + 1] >= settings.threshold) {
+          if (sliceData[i + 1] >= this.settings.threshold) {
             lightness += 1
           }
-          if (sliceData[i + 2] >= settings.threshold) {
+          if (sliceData[i + 2] >= this.settings.threshold) {
             lightness += 1
           }
         }
 
         // calculate average of lightness
-        averageLightness = (lightness / 3)
+        const normie = this.normalize(lightness)
 
-        // take that data and normalize it (0 - 100)
-        normalize(averageLightness)
+        // update data array
+        this.data.splice(this.counter, 1, normie)
+        const cambroData = this.data
 
-        counter += 1
+        // send data over websockets
+        this.socket.emit('cambro_data_in', { cambroData, undefined })
 
-        if (counter >= total) {
-          counter = 0
-        }
+        // draw image to canvas
+        this.ctx.putImageData(sliceImage, start, end)
 
-        cambroData.splice(counter, 1, normalize())
+        if (this.settings.showGuides) {
+          this.ctx.font = '20px monospace'
+          this.ctx.fillStyle = 'lime'
+          this.ctx.fillText(normie.toString(), start + 2, end + 20)
 
-        socket.emit('cambro_data_in', {cambroData, cambroIO})
-
-        ctx.putImageData(slice, sliceStart, sliceEnd)
-
-        if (settings.showGuides) {
-          ctx.font = '20px monospace'
-          ctx.fillStyle = 'lime'
-          ctx.fillText(normalize().toString(), (sliceStart + 2), (sliceEnd + 20))
-
-          ctx.fillStyle = 'magenta'
-          ctx.fillText(counter.toString(), (sliceStart + 2), (sliceEnd + 40))
+          this.ctx.fillStyle = 'magenta'
+          this.ctx.fillText(this.counter.toString(), start + 2, end + 40)
         }
       }
     }
-  } // end draw()
-
-  document.body.appendChild(canvas)
-
-  var update = () => {
-    draw(video)
-    requestAnimationFrame(update)
   }
 
-  requestAnimationFrame(update)
+  draw (video) {
+    const update = () => {
+      this.bro(video)
+      requestAnimationFrame(update)
+    }
+
+    requestAnimationFrame(update)
+  }
 }
 
-init()
+const cambro = new Cambro(4, 4)
+
+cambro.createCanvas()
