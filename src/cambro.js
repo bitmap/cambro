@@ -5,11 +5,12 @@ const draw = Symbol('draw')
 const normalize = Symbol('normalize')
 
 class Cambro {
-  constructor (x, y, t = 128, w = 640, h = 480) {
+  constructor (x, y, t = 128) {
+    this.source = null
     this.gridX = x
     this.gridY = y
-    this.width = w
-    this.height = h
+    this.width = 0
+    this.height = 0
     this.threshold = t
     this.showGuides = true
     this.data = []
@@ -40,7 +41,7 @@ class Cambro {
     return normied
   }
 
-  [bro] (source, context, backContext) {
+  [bro] (source) {
     let sliceValue = 0
     let sliceCount = -1
     let cambroData = []
@@ -58,10 +59,10 @@ class Cambro {
         let lightness = 0
 
         // draw video on offscreen canvas for speed
-        backContext.drawImage(source, 0, 0, this.width, this.height)
+        this.btx.drawImage(source, 0, 0, this.width, this.height)
 
         // get that data from offscreen canvas
-        const sliceImage = backContext.getImageData(
+        const sliceImage = this.btx.getImageData(
           start,
           end,
           this.slice.width,
@@ -92,15 +93,15 @@ class Cambro {
         cambroData = this.data
 
         // draw image to canvas
-        context.putImageData(sliceImage, start, end)
+        this.ctx.putImageData(sliceImage, start, end)
 
         if (this.showGuides) {
-          context.font = '20px monospace'
-          context.fillStyle = 'lime'
-          context.fillText(sliceValue.toString(), start + 2, end + 20)
+          this.ctx.font = '20px monospace'
+          this.ctx.fillStyle = 'lime'
+          this.ctx.fillText(sliceValue.toString(), start + 2, end + 20)
 
-          context.fillStyle = 'magenta'
-          context.fillText(sliceCount.toString(), start + 2, end + 40)
+          this.ctx.fillStyle = 'magenta'
+          this.ctx.fillText(sliceCount.toString(), start + 2, end + 40)
         }
       }
     }
@@ -109,9 +110,9 @@ class Cambro {
     this.socket.emit('cambro_data_in', { cambroData, undefined })
   }
 
-  [draw] (video, context, backContext) {
+  [draw] (source) {
     const update = () => {
-      this[bro](video, context, backContext)
+      this[bro](source)
       requestAnimationFrame(update)
     }
 
@@ -119,32 +120,37 @@ class Cambro {
   }
 
   start () {
-    const video = document.createElement('video')
-    const canvas = document.createElement('canvas')
-    const banvas = document.createElement('canvas')
+    navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: true
+    }).then(stream => {
+      this.source = document.createElement('video')
+      const sourceObject = this.source.srcObject = stream
+      return sourceObject
+    }).then(source => {
+      if (source.active) {
+        const canvas = document.createElement('canvas')
+        const banvas = document.createElement('canvas')
 
-    video.width = canvas.width = banvas.width = this.width
-    video.height = canvas.height = banvas.height = this.height
+        const videoSettings = source.getVideoTracks()[0].getSettings()
 
-    video.setAttribute('autoplay', true)
-
-    const ctx = canvas.getContext('2d')
-    const btx = banvas.getContext('2d')
-
-    navigator.getUserMedia(
-      { video: true },
-      stream => {
-        video.src = window.URL.createObjectURL(stream)
+        this.width = videoSettings.width
+        this.height = videoSettings.height
+        this.source.width = canvas.width = banvas.width = this.width
+        this.source.height = canvas.height = banvas.height = this.height
+        this.source.setAttribute('autoplay', true)
+        this.ctx = canvas.getContext('2d')
+        this.btx = banvas.getContext('2d')
         document.body.appendChild(canvas)
-        this[draw](video, ctx, btx)
-      },
-      err => {
-        throw err
+
+        this[draw](this.source)
       }
-    )
+    }).catch(err => {
+      console.log(err)
+    })
   }
 }
 
 const cambro = new Cambro(4, 4)
-console.log(cambro);
+
 cambro.start()
